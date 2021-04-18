@@ -1,13 +1,13 @@
-use crate::tootris::{Renderer, GameUpdateReceiver, UI2RenderCommunique, Master2RenderCommunique,
-                     GameMatrix, GameBlock, Point, BlockColor};
-use crate::piece;
+use crate::game::tootris::{Renderer, GameUpdateReceiver, UI2RenderCommunique, Master2RenderCommunique,
+                           GameMatrix, GameBlock, Point, BlockColor};
+use crate::game::piece;
 use std::fmt::Debug;
 use std::io::{stdout, Write, Stdout};
 use crossterm::{
     ExecutableCommand, QueueableCommand,
     terminal, cursor, style::{self, Colorize}, Result,
 };
-use crate::piece::Piece;
+use crate::game::piece::Piece;
 use std::sync::mpsc::Receiver;
 use std::borrow::BorrowMut;
 use crossterm::style::{Color, Styler};

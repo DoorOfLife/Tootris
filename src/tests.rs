@@ -1,16 +1,16 @@
 #[cfg(test)]
 mod tests {
-    use crate::tootris::{Rotation, BlockColor, GameBlock, Point, GameState, PlayerMove, UIHandler,
-                         GameBroadcaster, GameUpdateReceiver, Master2UICommunique, Renderer,
-                         Master2RenderCommunique, GameEngineComponent, UI2RenderCommunique,
-                         UI2MasterCommunique, Communique};
+    use crate::game::tootris::{Rotation, BlockColor, GameBlock, Point, GameState, PlayerMove, UIHandler,
+                               GameBroadcaster, GameUpdateReceiver, Master2UICommunique, Renderer,
+                               Master2RenderCommunique, GameEngineComponent, UI2RenderCommunique,
+                               UI2MasterCommunique, Communique};
     
-    use crate::piece_types::*;
-    use crate::piece::Piece;
+    use crate::game::piece_types::*;
+    use crate::game::piece::Piece;
     use crate::ui::*;
     use crate::settings::{PIECE_L, PIECE_SQUARE, PIECE_PODIUM, OPTION_TICK_BASE_MS, PIECE_Z};
     use std::borrow::Borrow;
-    use crate::game_loop_controller::EvilGameMaster;
+    use crate::game::game_loop_controller::EvilGameMaster;
     use std::sync::mpsc::channel;
     use crate::ui::simple_command_ui::SimpleCommandUi;
 

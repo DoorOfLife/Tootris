@@ -1,5 +1,5 @@
-use crate::piece_types::{DefinitionBlock, PieceFreezeProperty, PieceDefinition};
-use crate::tootris::{BlockColor, Point, Orientation, Rotation, GameMatrix, GameBlock};
+use crate::game::piece_types::{DefinitionBlock, PieceFreezeProperty, PieceDefinition};
+use crate::game::tootris::{BlockColor, Point, Orientation, Rotation, GameMatrix, GameBlock};
 use core::fmt;
 use std::fmt::Formatter;
 

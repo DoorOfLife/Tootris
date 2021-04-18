@@ -3,8 +3,8 @@ use std::sync::mpsc::Receiver;
 use std::fmt;
 use std::fmt::{Formatter, Display, Pointer};
 
-use crate::piece::{Piece, PieceState};
-use crate::tootris::Rotation::OrientDown;
+use crate::game::piece::{Piece, PieceState};
+use crate::game::tootris::Rotation::OrientDown;
 
 pub(crate) type GameMatrix = Vec<Vec<GameBlock>>;
 

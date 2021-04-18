@@ -1,22 +1,22 @@
-mod tootris;
-mod piece_types;
-mod tests;
-mod piece;
-mod settings;
-mod game_loop_controller;
-mod ui;
+use std::io::{stdout, Stdout, Write};
+use std::sync::mpsc::{channel, Receiver, Sender};
 
-use ui::crossterm_render;
-use std::io::{stdout, Write, Stdout};
 use crossterm::{
-    ExecutableCommand, QueueableCommand,
-    terminal, cursor, style::{self, Colorize}, Result,
+    cursor, ExecutableCommand,
+    QueueableCommand, Result, style::{self, Colorize}, terminal,
 };
+
+use game::game_loop_controller::EvilGameMaster;
+use game::tootris::{GameBlock, GameBroadcaster, GameUpdateReceiver, Master2RenderCommunique, UI2MasterCommunique};
+use game::tootris::GameEngineComponent;
+use ui::crossterm_render;
+
 use crate::ui::crossterm_render::TermRenderer;
-use crate::game_loop_controller::EvilGameMaster;
-use std::sync::mpsc::{channel, Sender, Receiver};
-use crate::tootris::{GameUpdateReceiver, GameBroadcaster, UI2MasterCommunique, Master2RenderCommunique, GameBlock};
-use crate::tootris::GameEngineComponent;
+
+mod tests;
+mod settings;
+mod ui;
+mod game;
 
 fn main() -> Result<()> {
     let gm_2_render: (Sender<Master2RenderCommunique>, Receiver<Master2RenderCommunique>) = channel();

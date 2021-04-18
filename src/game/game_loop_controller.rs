@@ -9,15 +9,15 @@ use rand::{thread_rng, Rng};
 use std::any::Any;
 use std::borrow::Borrow;
 
-use crate::tootris::{Master2RenderCommunique, Master2UICommunique, GameState, Communique, GameBlock,
-                     Rotation, PlayerMove, Point, UI2MasterCommunique, GameUpdateReceiver,
-                     GameBroadcaster, GameMatrix, BlockColor};
+use crate::game::tootris::{Master2RenderCommunique, Master2UICommunique, GameState, Communique, GameBlock,
+                           Rotation, PlayerMove, Point, UI2MasterCommunique, GameUpdateReceiver,
+                           GameBroadcaster, GameMatrix, BlockColor};
 
-use crate::piece_types::{DefinitionBlock, PieceDefinition,
-                         PieceFreezeProperty, LINE, SQUARE, PODIUM, PieceDefinitions};
+use crate::game::piece_types::{DefinitionBlock, PieceDefinition,
+                               PieceFreezeProperty, LINE, SQUARE, PODIUM, PieceDefinitions};
 
-use crate::piece::{Piece, PieceState};
-use crate::tootris::Communique::Update;
+use crate::game::piece::{Piece, PieceState};
+use crate::game::tootris::Communique::Update;
 use crate::settings::*;
 
 
@@ -397,11 +397,9 @@ impl EvilGameMaster {
     pub(crate) fn is_point_colliding(&self, bounds: Vec<Point>) -> bool {
         for point in bounds {
             if point.y >= self.level.len() {
-                println!("wtf: {}", self.level[self.level.len()-1][point.x]);
                 return true;
             }
             if point.x >= self.level[0].len() {
-                println!("wtf!");
                 return true;
             }
             if self.level[point.y][point.x] != GameBlock::Empty {

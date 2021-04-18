@@ -1,7 +1,7 @@
-use crate::piece_types::DefinitionBlock::*;
+use crate::game::piece_types::DefinitionBlock::*;
 use std::collections::HashMap;
 use crate::settings::{PIECE_LINE, PIECE_SQUARE, PIECE_PODIUM, PIECE_L, PIECE_J, PIECE_S, PIECE_Z};
-use crate::piece::Piece;
+use crate::game::piece::Piece;
 use std::borrow::Borrow;
 
 #[macro_export]
