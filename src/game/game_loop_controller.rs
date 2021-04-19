@@ -1,25 +1,23 @@
 extern crate stopwatch;
 
-use stopwatch::Stopwatch;
-
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::Receiver;
-use rand::{thread_rng, Rng};
-
 use std::any::Any;
 use std::borrow::Borrow;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 
-use crate::game::tootris::{Master2RenderCommunique, Master2UICommunique, GameState, Communique, GameBlock,
-                           Rotation, PlayerMove, Point, UI2MasterCommunique, GameUpdateReceiver,
-                           GameBroadcaster, GameMatrix, BlockColor};
-
-use crate::game::piece_types::{DefinitionBlock, PieceDefinition,
-                               PieceFreezeProperty, LINE, SQUARE, PODIUM, PieceDefinitions};
+use rand::{Rng, thread_rng};
+use stopwatch::Stopwatch;
 
 use crate::game::piece::{Piece, PieceState};
+use crate::game::piece_types::{DefinitionBlock, LINE, PieceDefinition, PieceDefinitions,
+                               PieceFreezeProperty, PODIUM, SQUARE};
+
+use crate::game::tootris::{BlockColor, Communique, Controller, GameBlock, GameBroadcaster,
+                           GameMatrix, GameState, GameUpdateReceiver, Master2RenderCommunique,
+                           Master2UICommunique, PlayerMove, Point, Rotation, UI2MasterCommunique,
+                           UiCommand};
 use crate::game::tootris::Communique::Update;
 use crate::settings::*;
-
 
 pub struct EvilGameMaster {
     pub level: GameMatrix,
@@ -36,6 +34,24 @@ pub struct EvilGameMaster {
     pub render_slave: Option<GameBroadcaster<Master2RenderCommunique>>,
     pub ui_slave: Option<GameBroadcaster<Master2UICommunique>>,
     pub ui_listener: Option<GameUpdateReceiver<UI2MasterCommunique>>,
+}
+
+impl Controller for EvilGameMaster {
+    fn process(&mut self) {
+        self.process_game();
+    }
+
+    fn give_ui_broadcaster(&mut self, broadcaster: GameBroadcaster<Master2UICommunique>) {
+        self.ui_slave = Some(broadcaster);
+    }
+
+    fn give_render_broadcaster(&mut self, broadcaster: GameBroadcaster<Master2RenderCommunique>) {
+        self.render_slave = Some(broadcaster);
+    }
+
+    fn give_ui_receiver(&mut self, receiver: GameUpdateReceiver<UI2MasterCommunique>) {
+        self.ui_listener = Some(receiver);
+    }
 }
 
 impl EvilGameMaster {
@@ -126,25 +142,26 @@ impl EvilGameMaster {
         }
     }
 
-    pub fn process_game(&mut self) {
+    pub fn process_game(&mut self) -> bool {
         let mut should_update_render = false;
+        let mut should_continue = true;
 
         match self.state {
             GameState::Playing => {
                 if self.active_piece.is_none() {
                     if !self.next_piece() {
                         self.state = GameState::End;
-                        return;
+                        return should_continue;
                     }
                 }
                 if self.next_tick() {
                     should_update_render = true;
 
                     if !self.advance_active_piece() {
-                        println!("{}",self.active_piece.as_ref().unwrap());
+                        println!("{}", self.active_piece.as_ref().unwrap());
                         self.freeze_active_piece();
                         //in this case, return to immediately "instantiate" next piece
-                        return; //in the next loop cycle
+                        return should_continue; //in the next loop cycle
                     }
                 }
 
@@ -200,113 +217,57 @@ impl EvilGameMaster {
                 }
             }
 
-            GameState::Pause => {
-                self.sw.stop();
-                self.state = GameState::Paused;
-                self.send_state_to_ui(GameState::Paused);
-                return;
-            }
-
             GameState::Paused => {
-                //todo: Check for input to unpause
+                self.process_input_commands();
             }
             GameState::End => {
-                self.send_state_to_ui(GameState::End);
-                self.send_render_update(GameState::End);
-                self.game_over();
-                //todo: implement ending logic
+                self.process_input_commands();
             }
             GameState::Start => {
-                self.sw.start();
-                self.state = GameState::Playing;
-                self.send_state_to_ui(GameState::Playing);
-                return;
+                self.process_input_commands();
             }
-            GameState::Reset => {
-                if self.sw.is_running() {
-                    self.sw.stop();
-                }
-                self.sw.reset();
-                //todo: reset level-data
-                self.state = GameState::Paused;
-                self.send_state_to_ui(GameState::Paused);
-                return;
+            GameState::Exit => {
+                should_continue = false;
             }
         }
         if should_update_render {
             self.send_render_update(self.state);
         }
+        return should_continue;
     }
 
 
     fn process_input_commands(&mut self) -> bool {
         if self.ui_listener.is_some() {
-            let mut terminate = false;
             let mut command = self.ui_listener.as_mut().unwrap().receiver.try_recv();
             if command.is_err() {
                 return false;
             }
-            if command.as_ref().unwrap().state.is_some() {
-                terminate = self.handle_state_request(command.as_ref().unwrap().state.as_ref().unwrap());
+            if command.as_ref().unwrap().is_command() {
+                match command.as_mut().unwrap().command.as_ref().unwrap() {
+                    UiCommand::New => {
+                        self.new_game();
+                    }
+                    UiCommand::Pause => {
+                        self.pause_game();
+                    }
+                    UiCommand::Resume => {
+                        self.resume_game();
+                    }
+                    UiCommand::Exit => {
+                        self.exit();
+                    }
+                    _ => {}
+                }
+                return true;
             }
-            if terminate { return false; };
-            if command.as_ref().unwrap().player_move.is_some() {
+
+            if command.as_ref().unwrap().is_player_move() {
                 return self.process_move(command.as_ref().unwrap().player_move.as_ref().unwrap());
             }
             return false;
         }
         return false;
-    }
-
-
-    /**
-    * returns true if ui processing should continue after handling state requests
-    */
-    fn handle_state_request(&mut self, state: &GameState) -> bool {
-        match state {
-            GameState::End => {
-                self.state = GameState::End;
-                return false;
-            }
-            GameState::Reset => {
-                self.state = GameState::Reset;
-                return false;
-            }
-            _ => {}
-        }
-        match self.state {
-            GameState::Playing => {
-                match state {
-                    GameState::Pause => {
-                        self.pause_game();
-                        return false;
-                    }
-                    _ => {}
-                }
-            }
-            GameState::Paused => {
-                match state {
-                    GameState::Start => {
-                        self.resume_game();
-                        return false;
-                    }
-
-                    _ => {}
-                }
-            }
-            GameState::End => {
-                match state {
-                    GameState::Start => {
-                        self.new_game();
-                        return false;
-                    }
-
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
-        return true;
     }
 
     fn fall_if_time(&mut self) -> bool {
@@ -336,20 +297,41 @@ impl EvilGameMaster {
         return false;
     }
 
+    pub fn exit(&mut self) {
+        if self.sw.is_running() {
+            self.sw.stop();
+        }
+        self.state = GameState::Exit;
+    }
+
     pub fn new_game(&mut self) {
+        if self.sw.is_running() {
+            self.sw.stop();
+        }
+        self.sw.reset();
         self.score = 0;
         self.active_piece = None;
         self.level = Self::create_level(self.level[0].len(), self.level.len());
         self.create_level_boundaries();
         self.state = GameState::Start;
+        self.send_state_to_ui(GameState::Start);
     }
 
     pub fn resume_game(&mut self) {
-        self.state = GameState::Start;
+        if !self.sw.is_running() {
+            self.sw.start();
+        }
+        self.state = GameState::Playing;
+        self.send_state_to_ui(GameState::Playing);
     }
 
     pub fn pause_game(&mut self) {
-        self.state = GameState::Pause;
+        if self.sw.is_running() {
+            self.sw.stop();
+        }
+        self.state = GameState::Paused;
+        self.send_state_to_ui(GameState::Paused);
+        return;
     }
 
     pub fn give_render_slave(&mut self, broadcaster: GameBroadcaster<Master2RenderCommunique>) {
@@ -365,7 +347,6 @@ impl EvilGameMaster {
     }
 
     fn freeze_active_piece(&mut self) {
-        //todo: place piece in level, destroy piece, check for complete rows
         self.active_piece.as_ref().unwrap().place_in_matrix(self.level.as_mut_slice());
         self.active_piece = None;
         self.find_completed_rows();
@@ -478,8 +459,6 @@ impl EvilGameMaster {
         true
     }
 
-    fn game_over(&mut self) {}
-
     fn create_level_boundaries(&mut self) {
         for y in 0..self.level.len() {
             for x in 0..self.level[y].len() {
@@ -498,7 +477,7 @@ impl EvilGameMaster {
             return self.ui_slave.as_ref().unwrap().channel_out.send(Master2UICommunique {
                 comm_type: Update,
                 state: Some(state),
-                piece: None,
+                score: Some(self.score),
             }).is_err();
         }
         return false;
@@ -511,7 +490,6 @@ impl EvilGameMaster {
             return self.render_slave.as_ref().unwrap().channel_out.send(Master2RenderCommunique {
                 comm_type: Communique::Update,
                 level: Some(level_update),
-                active_piece: None,
                 state: Some(state),
                 score: Some(self.score),
             }).is_err();

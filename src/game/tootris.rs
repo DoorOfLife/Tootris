@@ -34,15 +34,6 @@ impl PartialEq for GameBlock {
     }
 }
 
-impl Display for GameBlock {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            GameBlock::Indestructible => write!(f, "¤¤"),
-            _ => write!(f,"#"),
-        }
-    }
-}
-
 impl GameBlock {
     pub fn get_color(&self) -> Option<&BlockColor> {
         match self {
@@ -56,7 +47,7 @@ impl GameBlock {
             GameBlock::Origin(_) => "#",
             GameBlock::Empty => "-",
             GameBlock::Indestructible => "X",
-            _ => {" "}
+            _ => { " " }
         }
     }
 }
@@ -117,35 +108,42 @@ impl Rotation {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub enum UiCommand {
+    New,
+    Pause,
+    Resume,
+    Exit,
+    RenderOffset(Point),
+    Write(String, Point),
+}
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum GameState {
-    Pause,
     Paused,
-    Reset,
     Playing,
     Start,
     Tootris,
     PieceFreeze,
     End,
+    Exit,
 }
 
 impl Display for GameState {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            GameState::Pause => write!(f, "Pause"),
             GameState::Paused => write!(f, "Paused"),
-            GameState::Reset => write!(f, "Reset"),
             GameState::Playing => write!(f, "Playing"),
             GameState::Start => write!(f, "Start"),
             GameState::Tootris => write!(f, "Tootris"),
             GameState::PieceFreeze => write!(f, "PieceFreeze"),
             GameState::End => write!(f, "End"),
+            GameState::Exit => write!(f, "Exit"),
         }
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Point {
     pub x: usize,
     pub y: usize,
@@ -180,33 +178,21 @@ pub enum PlayerMove {
     OrientDown,
 }
 
-
-#[derive(Copy, Clone)]
-pub enum /*"""*/GameEngineComponent/*"""*/ {
-    Renderer,
-    Ui,
-    /* WAAHAHAHAHA..! */
-    EvilGameMaster,
-}
-
 /**
 * Wrappers for communication between the components (UI, Renderer, controller..)
 */
 #[derive(Clone)]
 pub struct GameBroadcaster<T> {
     pub channel_out: Sender<T>,
-    pub receiver: GameEngineComponent,
 }
 
 pub struct GameUpdateReceiver<T> {
     pub receiver: Receiver<T>,
-    pub broadcaster: GameEngineComponent,
 }
 
 pub struct Master2RenderCommunique {
     pub comm_type: Communique,
     pub level: Option<GameMatrix>,
-    pub active_piece: Option<Piece>,
     pub state: Option<GameState>,
     pub score: Option<usize>,
 }
@@ -214,16 +200,31 @@ pub struct Master2RenderCommunique {
 pub struct Master2UICommunique {
     pub comm_type: Communique,
     pub state: Option<GameState>,
-    pub piece: Option<Piece>,
+    pub score: Option<usize>,
 }
 
 pub struct UI2MasterCommunique {
     pub comm_type: Communique,
-    pub state: Option<GameState>,
+    pub command: Option<UiCommand>,
     pub player_move: Option<PlayerMove>,
 }
 
-pub struct UI2RenderCommunique {}
+impl UI2MasterCommunique {
+    pub fn is_player_move(&self) -> bool {
+        self.player_move.is_some()
+    }
+
+    pub fn is_command(&self) -> bool {
+        self.command.is_some()
+    }
+}
+
+pub struct UI2RenderCommunique {
+    pub com_type: Communique,
+    pub matrix: Option<GameMatrix>,
+    pub command: Option<UiCommand>,
+}
+
 
 #[derive(Clone, Debug)]
 pub enum Communique {
@@ -232,14 +233,21 @@ pub enum Communique {
     Error(&'static str),
 }
 
+pub trait Controller {
+    fn process(&mut self);
+    fn give_ui_broadcaster(&mut self, broadcaster: GameBroadcaster<Master2UICommunique>);
+    fn give_render_broadcaster(&mut self, broadcaster: GameBroadcaster<Master2RenderCommunique>);
+    fn give_ui_receiver(&mut self, receiver: GameUpdateReceiver<UI2MasterCommunique>);
+}
+
 pub trait Renderer {
-    fn render() {}
+    fn render(&mut self) -> bool;
     fn give_master_receiver(&mut self, receiver: GameUpdateReceiver<Master2RenderCommunique>);
     fn give_ui_receiver(&mut self, receiver: GameUpdateReceiver<UI2RenderCommunique>);
 }
 
 pub trait UIHandler {
-    fn process_input(&mut self);
+    fn handle_ui(&mut self) -> bool;
     fn give_master_receiver(&mut self, receiver: GameUpdateReceiver<Master2UICommunique>);
     fn give_master_broadcaster(&mut self, broadcaster: GameBroadcaster<UI2MasterCommunique>);
     fn give_render_broadcaster(&mut self, broadcaster: GameBroadcaster<UI2RenderCommunique>);

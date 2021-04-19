@@ -60,7 +60,7 @@ impl SimpleCommandUi {
         if self.master_broadcaster.is_some() {
             let com = UI2MasterCommunique {
                 comm_type: Communique::Update,
-                state: None,
+                command: None,
                 player_move: Some(mov),
             };
             self.master_broadcaster.as_mut().unwrap().channel_out.send(com);
@@ -69,11 +69,12 @@ impl SimpleCommandUi {
 }
 
 impl UIHandler for SimpleCommandUi {
-    fn process_input(&mut self) {
+    fn handle_ui(&mut self) -> bool{
         for mov in self.command_queue.clone() {
             self.send_input_to_master(mov);
         }
         self.command_queue.clear();
+        return true;
     }
 
     fn give_master_receiver(&mut self, receiver: GameUpdateReceiver<Master2UICommunique>) {

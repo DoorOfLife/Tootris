@@ -2,9 +2,9 @@
 mod tests {
     use crate::game::tootris::{Rotation, BlockColor, GameBlock, Point, GameState, PlayerMove, UIHandler,
                                GameBroadcaster, GameUpdateReceiver, Master2UICommunique, Renderer,
-                               Master2RenderCommunique, GameEngineComponent, UI2RenderCommunique,
+                               Master2RenderCommunique, UI2RenderCommunique,
                                UI2MasterCommunique, Communique};
-    
+
     use crate::game::piece_types::*;
     use crate::game::piece::Piece;
     use crate::ui::*;
@@ -68,26 +68,23 @@ mod tests {
         let chan_ui_master = channel();
         ui.give_master_broadcaster(GameBroadcaster {
             channel_out: chan_ui_master.0,
-            receiver: GameEngineComponent::EvilGameMaster,
         });
         master.give_ui_receiver(GameUpdateReceiver {
             receiver: chan_ui_master.1,
-            broadcaster: GameEngineComponent::Ui,
         });
         master.give_render_slave(GameBroadcaster {
             channel_out: chan_master_render.0,
-            receiver: GameEngineComponent::Renderer,
         });
 
         let mut mock_renderer = MockCommReceiver::new();
         mock_renderer.give_master_receiver(GameUpdateReceiver
-        { receiver: chan_master_render.1, broadcaster: GameEngineComponent::EvilGameMaster });
+        { receiver: chan_master_render.1 });
 
         master.resume_game();
         while master.active_piece.as_ref().unwrap().location.y < 10 {
             master.process_game();
             mock_renderer.print_any_update();
-            ui.process_input();
+            ui.handle_ui();
             ui.submit_command("L");
         }
     }
@@ -104,7 +101,6 @@ mod tests {
         while master.active_piece.is_some() {
             master.process_game();
         }
-
     }
 
 
@@ -158,22 +154,18 @@ mod tests {
 
         let master_2_render_receiver: GameUpdateReceiver<Master2RenderCommunique> = GameUpdateReceiver {
             receiver: chan_master_render.1,
-            broadcaster: GameEngineComponent::Renderer,
         };
         bitch.give_master_receiver(master_2_render_receiver);
 
         let master_2_render_sender: GameBroadcaster<Master2RenderCommunique> = GameBroadcaster {
             channel_out: chan_master_render.0,
-            receiver: GameEngineComponent::Renderer,
         };
         master.give_render_slave(master_2_render_sender);
         let ui_2_master_sender: GameBroadcaster<UI2MasterCommunique> = GameBroadcaster {
             channel_out: chan_ui_master.0,
-            receiver: GameEngineComponent::EvilGameMaster,
         };
         let ui_2_master_receiver: GameUpdateReceiver<UI2MasterCommunique> = GameUpdateReceiver {
             receiver: chan_ui_master.1,
-            broadcaster: GameEngineComponent::Ui,
         };
         master.give_ui_receiver(ui_2_master_receiver);
         master.resume_game();
@@ -183,7 +175,7 @@ mod tests {
         while master.active_piece.as_ref().unwrap().location.y < 9 {
             let move_command = UI2MasterCommunique {
                 comm_type: Communique::Update,
-                state: None,
+                command: None,
                 player_move: Some(PlayerMove::StepLeft),
             };
             ui_2_master_sender.channel_out.send(move_command);
@@ -216,9 +208,6 @@ mod tests {
                     if update.state.is_some() {
                         print!("[{}] ", update.state.unwrap());
                     }
-                    if update.active_piece.is_some() {
-                        print!("loc: {}", update.active_piece.unwrap().location);
-                    }
                     println!();
                 }
             }
@@ -233,6 +222,9 @@ mod tests {
     }
 
     impl Renderer for MockCommReceiver {
+        fn render(&mut self) -> bool {
+            true
+        }
         fn give_master_receiver(&mut self, receiver: GameUpdateReceiver<Master2RenderCommunique>) {
             self.master_to_render_receiver = Some(receiver);
         }

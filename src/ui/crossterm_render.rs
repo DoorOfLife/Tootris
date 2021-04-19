@@ -1,5 +1,4 @@
-use crate::game::tootris::{Renderer, GameUpdateReceiver, UI2RenderCommunique, Master2RenderCommunique,
-                           GameMatrix, GameBlock, Point, BlockColor};
+use crate::game::tootris::{Renderer, GameUpdateReceiver, UI2RenderCommunique, Master2RenderCommunique, GameMatrix, GameBlock, Point, BlockColor, GameState};
 use crate::game::piece;
 use std::fmt::Debug;
 use std::io::{stdout, Write, Stdout};
@@ -14,12 +13,13 @@ use crossterm::style::{Color, Styler};
 use crossterm::terminal::ClearType;
 
 pub struct TermRenderer {
-    pub master_receiver: Option<GameUpdateReceiver<Master2RenderCommunique>>,
-    pub ui_receiver: Option<GameUpdateReceiver<UI2RenderCommunique>>,
+    pub from_master: Option<GameUpdateReceiver<Master2RenderCommunique>>,
+    pub from_ui: Option<GameUpdateReceiver<UI2RenderCommunique>>,
     pub out: Option<Stdout>,
     pub current_matrix: Option<GameMatrix>,
     pub draw_buffer: Option<GameMatrix>,
     pub term_size: Option<(u16, u16)>,
+    pub state: Option<GameState>,
 }
 
 impl TermRenderer {
@@ -34,18 +34,29 @@ impl TermRenderer {
         self.term_size = Some(terminal::size().unwrap());
     }
 
-    pub fn check_maybe_render(&mut self) {
-        if self.out.is_none() || self.master_receiver.is_none() {
-            return;
+    /// Returns true if thread should continue
+    pub fn check_maybe_render(&mut self) -> bool {
+        if self.out.is_none() || self.from_master.is_none() {
+            return false;
         }
+
+        if self.state.is_some() {
+            match self.state.as_ref().unwrap() {
+                GameState::Exit => {
+                    return false;
+                }
+                _ => {}
+            }
+        }
+
         let should_draw = self.check_handle_master_updates();
         if self.check_if_window_changed() {
             self.full_refresh();
-        }
-        else if should_draw {
+        } else if should_draw {
             self.draw_updates();
             self.out.as_mut().unwrap().flush();
         }
+        return true;
     }
 
     fn check_if_window_changed(&mut self) -> bool {
@@ -58,7 +69,7 @@ impl TermRenderer {
 
     /// returns true if there were updates
     fn check_handle_master_updates(&mut self) -> bool {
-        let receiver = self.master_receiver.as_mut().unwrap().receiver.borrow_mut();
+        let receiver = self.from_master.as_mut().unwrap().receiver.borrow_mut();
         let rec = receiver.try_recv();
         if rec.is_ok() {
             let com = rec.unwrap();
@@ -158,11 +169,15 @@ impl TermRenderer {
 }
 
 impl Renderer for TermRenderer {
+    fn render(&mut self) -> bool {
+        return self.check_maybe_render();
+    }
+
     fn give_master_receiver(&mut self, receiver: GameUpdateReceiver<Master2RenderCommunique>) {
-        self.master_receiver = Some(receiver);
+        self.from_master = Some(receiver);
     }
 
     fn give_ui_receiver(&mut self, receiver: GameUpdateReceiver<UI2RenderCommunique>) {
-        self.ui_receiver = Some(receiver);
+        self.from_ui = Some(receiver);
     }
 }
