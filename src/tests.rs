@@ -169,7 +169,7 @@ mod tests {
         };
         master.give_ui_receiver(ui_2_master_receiver);
         master.resume_game();
-        assert_eq!(master.state, GameState::Start);
+        assert_eq!(master.state, GameState::Playing);
         master.process_game();
         assert_eq!(master.state, GameState::Playing);
         while master.active_piece.as_ref().unwrap().location.y < 9 {

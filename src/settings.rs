@@ -1,6 +1,6 @@
 pub(crate) static OPTION_SLIDE_INTERVAL_MS: i64 = 100;
 pub(crate) static OPTION_FALL_INTERVAL_MS: i64 = 50;
-pub(crate) static OPTION_TICK_BASE_MS: usize = 10; //todo: tweak
+pub(crate) static OPTION_TICK_BASE_MS: usize = 4; //todo: tweak
 pub(crate) static OPTION_BUCKET_MAX_SIZE: usize = 20;
 pub(crate) static OPTION_BUCKET_MINIMUM_SIZE: usize = 3;
 

@@ -99,7 +99,7 @@ impl Piece {
         Self::update_matrix_for(self);
     }
 
-    pub fn set_matrix_normal(&mut self) {
+    fn set_matrix_normal(&mut self) {
         let mut matrix: Vec<Vec<DefinitionBlock>> =
             vec![vec![DefinitionBlock::Blank; self.definition[0].len()]; self.definition.len()];
 
@@ -111,7 +111,7 @@ impl Piece {
         self.current_matrix = matrix;
     }
 
-    pub fn set_matrix_backwards(&mut self) {
+    fn set_matrix_backwards(&mut self) {
         let mut rotated_matrix: Vec<Vec<DefinitionBlock>> =
             vec![vec![DefinitionBlock::Blank; self.definition.len()]; self.definition[0].len()];
         /*
@@ -126,7 +126,7 @@ impl Piece {
         }
         self.current_matrix = rotated_matrix;
     }
-    pub fn set_matrix_forwards(&mut self) {
+    fn set_matrix_forwards(&mut self) {
         let mut rotated_matrix: Vec<Vec<DefinitionBlock>> =
             vec![vec![DefinitionBlock::Blank; self.definition.len()]; self.definition[0].len()];
         /*
@@ -146,7 +146,7 @@ impl Piece {
         self.current_matrix = rotated_matrix;
     }
 
-    pub fn set_matrix_upside_down(&mut self) {
+    fn set_matrix_upside_down(&mut self) {
         let mut rotated_matrix: Vec<Vec<DefinitionBlock>> = Vec::new();
         for _x in 0..self.definition.len() {
             rotated_matrix.push(vec![DefinitionBlock::Blank; self.definition[0].len()]);
@@ -170,8 +170,10 @@ impl Piece {
         let origin = self.find_origin_for_zero_block(None);
         for y in 0..self.current_matrix.len() {
             for x in 0..self.current_matrix[y].len() {
-                matrix[origin.y + y][origin.x + x]
-                    = self.colorize_block_erase_origin(self.current_matrix[y][x].clone());
+                if self.current_matrix[y][x] != DefinitionBlock::Blank {
+                    matrix[origin.y + y][origin.x + x]
+                        = self.colorize_block_erase_origin(self.current_matrix[y][x].clone());
+                }
             }
         }
         matrix
@@ -234,24 +236,22 @@ impl Piece {
             let mut last: Option<Point> = None;
 
             for x in 0..self.current_matrix[y].len() {
-                let current_block = self.current_matrix[y][x];
-                let current_point = Point {
-                    x: origin.x + x,
-                    y: origin.y + y,
-                };
-                if current_block == DefinitionBlock::Origin ||
-                    current_block == DefinitionBlock::Filled {
-                    if first.is_none() {
-                        first = Some(current_point.clone());
-                        last = Some(current_point.clone());
-                        boundaries.push(current_point);
-                    }
+                if self.current_matrix[y][x] == DefinitionBlock::Blank {
+                    continue;
+                }
+                let current_point = Point { x: origin.x + x, y: origin.y + y };
+                if first.is_none() {
+                    first = Some(current_point);
+                    last = Some(current_point);
                 } else {
-                    last = Some(current_point.clone());
+                    last = Some(current_point);
                 }
             }
-            if first.is_some() && last.is_some() && first.unwrap() != last.unwrap() {
-                boundaries.push(last.unwrap().clone());
+            if first.is_some() {
+                boundaries.push(first.unwrap());
+            }
+            if last.is_some() {
+                boundaries.push(last.unwrap());
             }
         }
         return boundaries;

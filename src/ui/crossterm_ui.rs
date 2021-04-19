@@ -9,10 +9,10 @@ use crate::game::tootris::{UIHandler, UI2MasterCommunique, GameBroadcaster, Game
 use crate::ui::settings::{MOVE_LEFT_COMMAND, MOVE_RIGHT_COMMAND, ROT_DOWN_COMMAND, ROT_UP_COMMAND,
                           ROT_LEFT_COMMAND, ROT_RIGHT_COMMAND};
 
-struct TermUI {
-    to_master: Option<GameBroadcaster<UI2MasterCommunique>>,
-    to_render: Option<GameBroadcaster<UI2RenderCommunique>>,
-    from_master: Option<GameUpdateReceiver<Master2UICommunique>>,
+pub struct TermUI {
+    pub to_master: Option<GameBroadcaster<UI2MasterCommunique>>,
+    pub to_render: Option<GameBroadcaster<UI2RenderCommunique>>,
+    pub from_master: Option<GameUpdateReceiver<Master2UICommunique>>,
 }
 
 impl TermUI {
@@ -44,10 +44,14 @@ impl TermUI {
 
 impl UIHandler for TermUI {
     fn handle_ui(&mut self) -> bool {
-        if poll(Duration::from_secs(0)).is_ok() {
+        let result = poll(Duration::from_millis(0));
+        if result.is_err() {
+            return false;
+        }
+        if result.unwrap() {
             let event = read();
             if event.is_err() {
-                return true;
+                return false;
             }
             match event.unwrap() {
                 Event::Key(event) => {

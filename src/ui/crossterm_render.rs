@@ -154,7 +154,7 @@ impl TermRenderer {
             for x in 0..new_matrix[0].len() {
                 if current[y][x] == new_matrix[y][x] {
                     write[y][x] = GameBlock::None;
-                } else if current[y][x] != GameBlock::Indestructible {
+                } else {
                     write[y][x] = new_matrix[y][x].clone();
                     current[y][x] = new_matrix[y][x].clone();
                 }

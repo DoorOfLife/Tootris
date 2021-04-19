@@ -41,6 +41,15 @@ impl GameBlock {
             _ => None,
         }
     }
+
+    pub fn is_any(&self, of: &[Self]) -> bool {
+        for that in of {
+             if that.eq(self) {
+                 return true;
+             }
+        }
+        return false;
+    }
     pub fn get_string_visual(&self) -> &str {
         match self {
             GameBlock::Filled(_) => "#",
