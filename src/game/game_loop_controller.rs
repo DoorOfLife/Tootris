@@ -8,8 +8,8 @@ use std::sync::mpsc::Sender;
 use rand::{Rng, thread_rng};
 use stopwatch::Stopwatch;
 
-use crate::game::piece::{Piece, PieceState};
-use crate::game::piece_types::{DefinitionBlock, LINE, PieceDefinition, PieceDefinitions,
+use crate::game::piece::{Piece};
+use crate::game::piece_types::{PieceDefinition, PieceDefinitions,
                                PieceFreezeProperty, PODIUM, SQUARE};
 
 use crate::game::tootris::{BlockColor, Communique, Controller, GameBlock, GameBroadcaster,
@@ -18,6 +18,8 @@ use crate::game::tootris::{BlockColor, Communique, Controller, GameBlock, GameBr
                            UiCommand};
 use crate::game::tootris::Communique::Update;
 use crate::settings::*;
+use crate::game::tootris::GameState::Tootris;
+use crossterm::tty::IsTty;
 
 pub struct EvilGameMaster {
     pub level: GameMatrix,
@@ -65,9 +67,11 @@ impl EvilGameMaster {
 
     pub fn create_empty_row(x: usize) -> Vec<GameBlock> {
         let mut row: Vec<GameBlock> = Vec::new();
-        for _point in 0..x {
+        row.push(GameBlock::Indestructible);
+        for _point in 1..x - 1 {
             row.push(GameBlock::Empty);
         }
+        row.push(GameBlock::Indestructible);
         return row;
     }
     pub fn new(height: usize, width: usize, initial_piece: Option<Piece>,
@@ -158,24 +162,14 @@ impl EvilGameMaster {
                     should_update_render = true;
 
                     if !self.advance_active_piece() {
-                        println!("{}", self.active_piece.as_ref().unwrap());
                         self.freeze_active_piece();
+                        if !self.completed_rows.is_empty() {
+                            self.state = Tootris;
+                        }
                         //in this case, return to immediately "instantiate" next piece
+                        //or handle the tootris state
                         return should_continue; //in the next loop cycle
                     }
-                }
-
-                match self.active_piece.as_ref().unwrap().piece_state {
-                    PieceState::SlidingLeft => {
-                        self.slide_if_time(true);
-                    }
-                    PieceState::SlidingRight => {
-                        self.slide_if_time(false);
-                    }
-                    PieceState::Falling => {
-                        self.fall_if_time();
-                    }
-                    _ => {}
                 }
                 //todo: check UI input
                 if self.process_input_commands() {
@@ -184,14 +178,10 @@ impl EvilGameMaster {
                 //if new movement:
                 //should_update_render = true;
             }
-
-            GameState::PieceFreeze => {
-                self.send_state_to_ui(GameState::PieceFreeze);
-            }
-
             GameState::Tootris => {
                 if self.next_tick() {
-                    self.send_state_to_ui(GameState::Tootris);
+                    println!("1");
+                    self.send_state_to_ui();
                     self.score += (self.completed_rows.len() * self.level[0].len())
                         .pow(self.completed_rows.len() as u32);
 
@@ -201,19 +191,22 @@ impl EvilGameMaster {
                     for _new_row in 0..self.completed_rows.len() {
                         new_matrix.push(Self::create_empty_row(self.level[0].len()))
                     }
-
+                    println!("2");
                     //in old matrix, remove the completed rows
                     for remove_row in self.completed_rows.to_owned() {
                         self.level.remove(remove_row);
                     }
 
                     //in new matrix, add the remaining rows from the old
-                    for mut remaning_row in self.level.to_owned() {
+                    for remaning_row in self.level.to_owned() {
                         new_matrix.push(remaning_row);
                     }
                     self.level = new_matrix;
+                    self.completed_rows = Vec::new();
                     self.state = GameState::Playing;
-                    self.send_state_to_ui(GameState::Playing);
+                    should_update_render = true;
+                    self.send_state_to_ui();
+                    println!("3");
                 }
             }
 
@@ -231,7 +224,7 @@ impl EvilGameMaster {
             }
         }
         if should_update_render {
-            self.send_render_update(self.state);
+            self.send_render_update();
         }
         return should_continue;
     }
@@ -314,7 +307,7 @@ impl EvilGameMaster {
         self.level = Self::create_level(self.level[0].len(), self.level.len());
         self.create_level_boundaries();
         self.state = GameState::Start;
-        self.send_state_to_ui(GameState::Start);
+        self.send_state_to_ui();
     }
 
     pub fn resume_game(&mut self) {
@@ -322,7 +315,7 @@ impl EvilGameMaster {
             self.sw.start();
         }
         self.state = GameState::Playing;
-        self.send_state_to_ui(GameState::Playing);
+        self.send_state_to_ui();
     }
 
     pub fn pause_game(&mut self) {
@@ -330,7 +323,7 @@ impl EvilGameMaster {
             self.sw.stop();
         }
         self.state = GameState::Paused;
-        self.send_state_to_ui(GameState::Paused);
+        self.send_state_to_ui();
         return;
     }
 
@@ -354,16 +347,55 @@ impl EvilGameMaster {
 
     fn find_completed_rows(&mut self) {
         'rows: for row in 0..self.level.len() {
+            let mut begin = false;
+            let mut end = false;
+
             for cell in self.level[row].as_slice() {
                 match cell {
-                    GameBlock::Filled(_) => {
-                        continue;
+                    &GameBlock::Indestructible => {
+                        if end {
+                            //this must be a border row
+                            continue 'rows;
+                        }
+                        if begin { //If it's not the beginning it must be the end
+                            end = true;
+                        } else { //If it's not the end then it must be the beginning
+                            begin = true;
+                        }
                     }
-                    _ => continue 'rows,
+                    &GameBlock::Filled(_) => {
+                        if end {
+                            self.ui_warn("Invalid state: piece block appears after border");
+                        } else if begin {
+                            //seems legit
+                        } else {
+                            self.ui_warn("Invalid state: piece block appears before border");
+                        }
+                    }
+                    _ => {
+                        continue 'rows;
+                    }
                 }
             }
             //If we get here, the row has only filled blocks
-            self.completed_rows.push(row);
+            if begin && end {
+                self.completed_rows.push(row);
+            }
+        }
+    }
+
+    fn ui_warn(&self, msg: &'static str) {
+        if self.ui_slave.is_none() {
+            eprintln!("No ui slave!");
+        }
+        let result = self.ui_slave.as_ref().unwrap().channel_out.send(Master2UICommunique {
+            comm_type: Communique::Info(msg),
+            state: None,
+            score: None,
+        });
+
+        if result.is_err() {
+            eprintln!("Could not send message to ui slave");
         }
     }
 
@@ -403,9 +435,9 @@ impl EvilGameMaster {
     pub fn process_move(&mut self, mov: &PlayerMove) -> bool {
         match mov {
             PlayerMove::RotateForward => self.rotate_active_piece(&Rotation::Forward),
-            PlayerMove::RotateBackward => self.rotate_active_piece(&Rotation::Backward),
             PlayerMove::StepLeft => self.horizontal_move(1, true),
             PlayerMove::StepRight => self.horizontal_move(1, false),
+            PlayerMove::StepDown => self.vertical_move(1),
             PlayerMove::OrientDown => self.rotate_active_piece(&Rotation::OrientDown),
             PlayerMove::OrientUp => self.rotate_active_piece(&Rotation::OrientUp),
             PlayerMove::OrientLeft => self.rotate_active_piece(&Rotation::OrientLeft),
@@ -419,7 +451,8 @@ impl EvilGameMaster {
             let mut point = self.active_piece.as_ref().unwrap().location.clone();
             point.y += amount;
             self.active_piece.as_mut().unwrap().move_to(point);
-            if self.ycolliding(self.active_piece.as_ref().unwrap(), None) {
+            let bounds = self.active_piece.as_ref().unwrap().points(None);
+            if self.is_point_colliding(bounds) {
                 self.active_piece.as_mut().unwrap().rollback_move();
                 return false;
             }
@@ -432,7 +465,7 @@ impl EvilGameMaster {
             let mut point = self.active_piece.as_ref().unwrap().location.clone();
             if reverse { point.x -= amount; } else { point.x += amount; }
             self.active_piece.as_mut().unwrap().move_to(point);
-            if self.is_xcolliding(self.active_piece.as_ref().unwrap(), None) {
+            if self.is_point_colliding(self.active_piece.as_ref().unwrap().points(None)) {
                 self.active_piece.as_mut().unwrap().rollback_move();
                 return false;
             }
@@ -447,11 +480,7 @@ impl EvilGameMaster {
         if self.active_piece.is_some() {
             self.active_piece.as_mut().unwrap().rotate(rot);
 
-            if self.is_xcolliding(self.active_piece.as_ref().unwrap(), None) {
-                self.active_piece.as_mut().unwrap().rollback_rotation();
-                return false;
-            }
-            if self.ycolliding(self.active_piece.as_ref().unwrap(), None) {
+            if self.is_point_colliding(self.active_piece.as_ref().unwrap().points(None)) {
                 self.active_piece.as_mut().unwrap().rollback_rotation();
                 return false;
             }
@@ -472,25 +501,28 @@ impl EvilGameMaster {
         }
     }
 
-    fn send_state_to_ui(&mut self, state: GameState) -> bool {
+    fn send_state_to_ui(&mut self) -> bool {
         if self.ui_slave.is_some() {
             return self.ui_slave.as_ref().unwrap().channel_out.send(Master2UICommunique {
                 comm_type: Update,
-                state: Some(state),
+                state: Some(self.state.clone()),
                 score: Some(self.score),
             }).is_err();
         }
         return false;
     }
 
-    fn send_render_update(&mut self, state: GameState) -> bool {
+    fn send_render_update(&mut self) -> bool {
         if self.render_slave.is_some() {
             let mut level_update = self.level.clone();
-            self.active_piece.as_ref().unwrap().place_in_matrix(level_update.as_mut_slice());
+            if self.active_piece.is_some() {
+                self.active_piece.as_ref().unwrap().place_in_matrix(level_update.as_mut_slice());
+            }
+
             return self.render_slave.as_ref().unwrap().channel_out.send(Master2RenderCommunique {
                 comm_type: Communique::Update,
                 level: Some(level_update),
-                state: Some(state),
+                state: Some(self.state.clone()),
                 score: Some(self.score),
             }).is_err();
         }

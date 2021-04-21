@@ -4,14 +4,6 @@ use core::fmt;
 use std::fmt::Formatter;
 
 #[derive(Clone)]
-pub enum PieceState {
-    Normal,
-    SlidingLeft,
-    SlidingRight,
-    Falling,
-}
-
-#[derive(Clone)]
 pub struct Piece {
     definition: Vec<Vec<DefinitionBlock>>,
     pub freeze_property: PieceFreezeProperty,
@@ -21,7 +13,6 @@ pub struct Piece {
     pub rollback_location: Point,
     pub orientation: Orientation,
     pub rollback_orientation: Orientation,
-    pub piece_state: PieceState,
 }
 
 impl fmt::Display for Piece {
@@ -64,7 +55,6 @@ impl Piece {
             rollback_location: location.clone(),
             orientation: Orientation::Normal,
             rollback_orientation: Orientation::Normal,
-            piece_state: PieceState::Normal,
         };
         fresh_self.update_current_matrix();
 
@@ -223,6 +213,24 @@ impl Piece {
         return origin.unwrap();
     }
 
+
+    pub fn points(&self, point_override: Option<&Point>) -> Vec<Point> {
+        let origin = self.find_origin_for_zero_block(point_override);
+        let mut boundaries: Vec<Point> = Vec::new();
+
+        for y in 0..self.current_matrix.len() {
+            for x in 0..self.current_matrix[y].len() {
+                if self.current_matrix[y][x] != DefinitionBlock::Blank {
+                    boundaries.push(Point {
+                        x: origin.x + x,
+                        y: origin.y + y,
+                    });
+                }
+            }
+        }
+        return boundaries;
+    }
+
     pub(crate) fn find_xboundaries(&self, point_override: Option<&Point>) -> Vec<Point> {
         let origin = self.find_origin_for_zero_block(point_override);
         let mut boundaries: Vec<Point> = Vec::with_capacity(self.current_matrix.len() * 2);
@@ -265,13 +273,16 @@ impl Piece {
         let origin = self.find_origin_for_zero_block(point_override);
         let mut boundaries: Vec<Point> = Vec::with_capacity(self.current_matrix[0].len());
 
-        for x in 0..self.current_matrix.last().unwrap().len() {
-            let bound = &self.current_matrix.last().unwrap()[x];
-            if bound.eq(&DefinitionBlock::Filled) || bound.eq(&DefinitionBlock::Origin) {
-                boundaries.push(Point {
-                    x: origin.x + x,
-                    y: origin.y + self.current_matrix.len() - 1,
-                })
+        //Assuming a uniform square matrix
+        for x in 0..self.current_matrix[0].len() {
+            for y in self.current_matrix.len() - 1..=0 {
+                if self.current_matrix[y][x] != DefinitionBlock::Blank {
+                    boundaries.push(Point {
+                        x: origin.x + x,
+                        y: origin.y + y,
+                    });
+                    break;
+                }
             }
         }
         return boundaries;

@@ -8,7 +8,7 @@ mod tests {
     use crate::game::piece_types::*;
     use crate::game::piece::Piece;
     use crate::ui::*;
-    use crate::settings::{PIECE_L, PIECE_SQUARE, PIECE_PODIUM, OPTION_TICK_BASE_MS, PIECE_Z};
+    use crate::settings::{PIECE_L, PIECE_SQUARE, PIECE_PODIUM, OPTION_TICK_BASE_MS, PIECE_Z, PIECE_S, PIECE_LINE, PIECE_J};
     use std::borrow::Borrow;
     use crate::game::game_loop_controller::EvilGameMaster;
     use std::sync::mpsc::channel;
@@ -89,17 +89,85 @@ mod tests {
         }
     }
 
-
     #[test]
-    fn test_collision() {
+    fn test_collision_artificial() {
         let pieces: PieceDefinitions = PieceDefinitions::new();
 
-        let my_point = Point { x: 5, y: 18 };
-        let mut my_piece: Piece = Piece::of_type(pieces.get_piece_def(PIECE_Z), BlockColor::Blue, my_point.clone());
-        let mut master = EvilGameMaster::new(22, 10, Some(my_piece), None, None, None);
+        let my_point = Point { x: 4, y: 2 };
+        let other_point = Point { x: 2, y: 4 };
+
+        let mut my_piece: Piece = Piece::of_type(pieces.get_piece_def(PIECE_J), BlockColor::Blue, my_point.clone());
+        my_piece.rotate(&Rotation::OrientLeft);
+        let mut other_piece: Piece = Piece::of_type(pieces.get_piece_def(PIECE_LINE), BlockColor::Magenta, other_point.clone());
+        println!("{}", &my_piece);
+        println!("{}", &other_piece);
+        let mut master = EvilGameMaster::new(6, 8, Some(my_piece.clone()), None, None, None);
+        other_piece.place_in_matrix(master.level.as_mut());
+
         master.resume_game();
         while master.active_piece.is_some() {
             master.process_game();
+            if master.active_piece.is_none() {
+                break;
+            }
+            assert!(master.active_piece.as_ref().unwrap().location.y < 4);
+        }
+
+        let matrix = &mut master.level;
+        //--DDD-----
+        //####D------
+        //--------
+        assert_eq!(matrix[4][1], GameBlock::Filled(BlockColor::Magenta));
+        assert_eq!(matrix[4][2], GameBlock::Filled(BlockColor::Magenta));
+        assert_eq!(matrix[4][3], GameBlock::Filled(BlockColor::Magenta));
+        assert_eq!(matrix[4][4], GameBlock::Filled(BlockColor::Magenta));
+        assert_eq!(matrix[3][3], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[3][4], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[3][5], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[4][5], GameBlock::Filled(BlockColor::Blue));
+
+        master.process_game();
+
+        assert!(master.active_piece.is_some());
+        my_piece.location.x += 1;
+        master.active_piece = Some(my_piece.clone());
+
+        while master.active_piece.is_some() {
+            master.process_game();
+            if master.active_piece.is_none() {
+                break;
+            }
+            assert!(master.active_piece.as_ref().unwrap().location.y < 3);
+        }
+        //---GGG
+        //--DDDG----
+        //####D------
+        //--------
+        let matrix = &mut master.level;
+        assert_eq!(matrix[4][1], GameBlock::Filled(BlockColor::Magenta));
+        assert_eq!(matrix[4][2], GameBlock::Filled(BlockColor::Magenta));
+        assert_eq!(matrix[4][3], GameBlock::Filled(BlockColor::Magenta));
+        assert_eq!(matrix[4][4], GameBlock::Filled(BlockColor::Magenta));
+        assert_eq!(matrix[3][3], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[3][4], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[3][5], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[4][5], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[2][4], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[2][5], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[2][6], GameBlock::Filled(BlockColor::Blue));
+        assert_eq!(matrix[3][6], GameBlock::Filled(BlockColor::Blue));
+
+        for y in 0..matrix.len() {
+            for x in 0..matrix[0].len() {
+                if matrix[y][x] == GameBlock::Indestructible {
+                    print!("B");
+                } else if matrix[y][x] != GameBlock::Empty{
+                    print!("#");
+                } else {
+                    print!("-");
+                }
+            }
+            println!();
         }
     }
 

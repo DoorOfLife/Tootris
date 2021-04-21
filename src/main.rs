@@ -7,7 +7,7 @@ use crossterm::{
 };
 
 use game::game_loop_controller::EvilGameMaster;
-use game::tootris::{GameBlock, GameBroadcaster, GameUpdateReceiver, Master2RenderCommunique, UI2MasterCommunique};
+use game::tootris::{GameBlock, GameState, GameBroadcaster, GameUpdateReceiver, Master2RenderCommunique, UI2MasterCommunique};
 use ui::crossterm_render;
 use ui::crossterm_ui;
 
@@ -61,6 +61,8 @@ fn main() -> Result<()> {
         to_master: Some(ui_to_gm_sender),
         to_render: Some(ui_to_render_sender),
         from_master: Some(master_to_ui_receiver),
+        state: Some(GameState::Playing),
+        score: None,
     };
 
     let mut master = EvilGameMaster::new(22, 10, None,
@@ -75,6 +77,8 @@ fn main() -> Result<()> {
         draw_buffer: None,
         term_size: None,
         state: None,
+        render_offset: None,
+        text: None,
     };
     master.new_game();
     master.resume_game();

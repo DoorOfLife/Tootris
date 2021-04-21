@@ -1,16 +1,14 @@
-use crate::game::tootris::{Renderer, GameUpdateReceiver, UI2RenderCommunique, Master2RenderCommunique, GameMatrix, GameBlock, Point, BlockColor, GameState};
-use crate::game::piece;
-use std::fmt::Debug;
-use std::io::{stdout, Write, Stdout};
-use crossterm::{
-    ExecutableCommand, QueueableCommand,
-    terminal, cursor, style::{self, Colorize}, Result,
-};
-use crate::game::piece::Piece;
-use std::sync::mpsc::Receiver;
 use std::borrow::BorrowMut;
+
+use std::io::{Stdout, Write};
+use crossterm::{
+    cursor,
+    QueueableCommand, style::{self}, terminal,
+};
 use crossterm::style::{Color, Styler};
 use crossterm::terminal::ClearType;
+use crate::game::tootris::{BlockColor, GameBlock, GameMatrix, GameState, GameUpdateReceiver,
+                           Master2RenderCommunique, Point, Renderer, UI2RenderCommunique};
 
 pub struct TermRenderer {
     pub from_master: Option<GameUpdateReceiver<Master2RenderCommunique>>,
@@ -20,6 +18,8 @@ pub struct TermRenderer {
     pub draw_buffer: Option<GameMatrix>,
     pub term_size: Option<(u16, u16)>,
     pub state: Option<GameState>,
+    pub render_offset: Option<Point>,
+    pub text: Option<(String, Point)>,
 }
 
 impl TermRenderer {
@@ -32,6 +32,18 @@ impl TermRenderer {
         self.draw_everything();
         self.out.as_mut().unwrap().flush();
         self.term_size = Some(terminal::size().unwrap());
+    }
+
+    fn find_render_offset(&mut self) {
+        if self.term_size.is_some() {
+            let (x, y) = self.term_size.unwrap();
+            //Since each point in the rendered matrix has an x width of 2
+            let offsetx = x as usize - self.current_matrix.as_ref().expect("no level!")[0].len();
+            self.render_offset = Some(Point {
+                x: offsetx,
+                y: 0,
+            });
+        }
     }
 
     /// Returns true if thread should continue
@@ -69,7 +81,9 @@ impl TermRenderer {
 
     /// returns true if there were updates
     fn check_handle_master_updates(&mut self) -> bool {
-        let receiver = self.from_master.as_mut().unwrap().receiver.borrow_mut();
+        let receiver = self.from_master
+            .as_mut()
+            .unwrap().receiver.borrow_mut();
         let rec = receiver.try_recv();
         if rec.is_ok() {
             let com = rec.unwrap();
@@ -111,8 +125,9 @@ impl TermRenderer {
         if self.out.is_none() {
             return;
         }
+        let offset = self.render_offset.unwrap_or(Point {x:0,y:0});
         let output = self.out.as_mut().unwrap();
-        output.queue(cursor::MoveTo((p.x * 2) as u16, p.y as u16));
+        output.queue(cursor::MoveTo((p.x * 2 + offset.x) as u16, (p.y +offset.y) as u16));
 
         match block {
             GameBlock::Filled(_) => {
@@ -148,8 +163,9 @@ impl TermRenderer {
         if self.draw_buffer.is_none() || self.current_matrix.is_none() {
             return;
         }
-        let write = self.draw_buffer.as_mut().unwrap();
-        let current = self.current_matrix.as_mut().unwrap();
+
+        let mut write = self.draw_buffer.as_mut().unwrap();
+        let mut current = self.current_matrix.as_mut().unwrap();
         for y in 0..new_matrix.len() {
             for x in 0..new_matrix[0].len() {
                 if current[y][x] == new_matrix[y][x] {

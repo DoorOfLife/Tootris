@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 use std::fmt;
 use std::fmt::{Formatter, Display, Pointer};
 
-use crate::game::piece::{Piece, PieceState};
+use crate::game::piece::{Piece};
 use crate::game::tootris::Rotation::OrientDown;
 
 pub(crate) type GameMatrix = Vec<Vec<GameBlock>>;
@@ -133,7 +133,6 @@ pub enum GameState {
     Playing,
     Start,
     Tootris,
-    PieceFreeze,
     End,
     Exit,
 }
@@ -145,7 +144,6 @@ impl Display for GameState {
             GameState::Playing => write!(f, "Playing"),
             GameState::Start => write!(f, "Start"),
             GameState::Tootris => write!(f, "Tootris"),
-            GameState::PieceFreeze => write!(f, "PieceFreeze"),
             GameState::End => write!(f, "End"),
             GameState::Exit => write!(f, "Exit"),
         }
@@ -177,10 +175,8 @@ pub enum PlayerMove {
     StepLeft,
     StepDown,
     RotateForward,
-    RotateBackward,
-    HoldLeft,
-    HoldRight,
     Drop,
+    StopDrop,
     OrientLeft,
     OrientRight,
     OrientUp,
@@ -235,7 +231,7 @@ pub struct UI2RenderCommunique {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Communique {
     Update,
     Info(&'static str),
