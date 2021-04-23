@@ -1,5 +1,5 @@
 use crate::game::piece_types::{DefinitionBlock, PieceFreezeProperty, PieceDefinition};
-use crate::game::tootris::{BlockColor, Point, Orientation, Rotation, GameMatrix, GameBlock};
+use crate::game::tootris::{BlockColor, Point, Orientation, Rotation, GameBlock};
 use core::fmt;
 use std::fmt::Formatter;
 
@@ -183,6 +183,7 @@ impl Piece {
         return match block {
             DefinitionBlock::Filled => GameBlock::Filled(self.color.clone()),
             DefinitionBlock::Origin => GameBlock::Filled(self.color.clone()),
+            DefinitionBlock::Text(val) => GameBlock::String(val.to_string(), self.color.clone()),
             _ => GameBlock::Empty,
         };
     }

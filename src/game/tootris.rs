@@ -1,10 +1,7 @@
 use std::sync::mpsc::Sender;
 use std::sync::mpsc::Receiver;
 use std::fmt;
-use std::fmt::{Formatter, Display, Pointer};
-
-use crate::game::piece::{Piece};
-use crate::game::tootris::Rotation::OrientDown;
+use std::fmt::{Formatter, Display};
 
 pub(crate) type GameMatrix = Vec<Vec<GameBlock>>;
 
@@ -16,15 +13,14 @@ pub enum BlockColor {
     Green,
     Cyan,
     White,
-    Undefined,
 }
 
 #[derive(Clone, Debug)]
 pub enum GameBlock {
     Filled(BlockColor),
-    Origin(BlockColor),
     Empty,
     Indestructible,
+    String(String, BlockColor),
     None,
 }
 
@@ -38,22 +34,22 @@ impl GameBlock {
     pub fn get_color(&self) -> Option<&BlockColor> {
         match self {
             GameBlock::Filled(val) => Some(&val),
+            GameBlock::String(_, color) => Some(&color),
             _ => None,
         }
     }
 
     pub fn is_any(&self, of: &[Self]) -> bool {
         for that in of {
-             if that.eq(self) {
-                 return true;
-             }
+            if that.eq(self) {
+                return true;
+            }
         }
         return false;
     }
     pub fn get_string_visual(&self) -> &str {
         match self {
             GameBlock::Filled(_) => "#",
-            GameBlock::Origin(_) => "#",
             GameBlock::Empty => "-",
             GameBlock::Indestructible => "X",
             _ => { " " }
@@ -83,7 +79,6 @@ impl Display for Orientation {
 #[derive(Clone, Copy, PartialEq)]
 pub enum Rotation {
     Forward,
-    Backward,
     OrientLeft,
     OrientRight,
     OrientUp,
@@ -93,14 +88,6 @@ pub enum Rotation {
 impl Rotation {
     pub fn perform(&self, orientation: &Orientation) -> Orientation {
         match self {
-            Rotation::Backward => {
-                match orientation {
-                    Orientation::Normal => Orientation::Backwards,
-                    Orientation::Backwards => Orientation::UpsideDown,
-                    Orientation::UpsideDown => Orientation::Forward,
-                    Orientation::Forward => Orientation::Normal,
-                }
-            }
             Rotation::Forward => {
                 match orientation {
                     Orientation::Normal => Orientation::Forward,
@@ -124,7 +111,12 @@ pub enum UiCommand {
     Resume,
     Exit,
     RenderOffset(Point),
-    Write(String, Point),
+    RefreshUi,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum ControllerCommand {
+    FullRefresh,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -175,12 +167,6 @@ pub enum PlayerMove {
     StepLeft,
     StepDown,
     RotateForward,
-    Drop,
-    StopDrop,
-    OrientLeft,
-    OrientRight,
-    OrientUp,
-    OrientDown,
 }
 
 /**
@@ -200,6 +186,7 @@ pub struct Master2RenderCommunique {
     pub level: Option<GameMatrix>,
     pub state: Option<GameState>,
     pub score: Option<usize>,
+    pub command: Option<ControllerCommand>,
 }
 
 pub struct Master2UICommunique {
@@ -226,7 +213,7 @@ impl UI2MasterCommunique {
 
 pub struct UI2RenderCommunique {
     pub com_type: Communique,
-    pub matrix: Option<GameMatrix>,
+    pub vector: Option<Vec<GameBlock>>,
     pub command: Option<UiCommand>,
 }
 

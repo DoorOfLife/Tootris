@@ -1,4 +1,4 @@
-use std::borrow::BorrowMut;
+use std::borrow::{BorrowMut, Borrow};
 
 use std::io::{Stdout, Write};
 use crossterm::{
@@ -6,9 +6,14 @@ use crossterm::{
     QueueableCommand, style::{self}, terminal,
 };
 use crossterm::style::{Color, Styler};
+
 use crossterm::terminal::ClearType;
-use crate::game::tootris::{BlockColor, GameBlock, GameMatrix, GameState, GameUpdateReceiver,
-                           Master2RenderCommunique, Point, Renderer, UI2RenderCommunique};
+use crate::game::tootris::{BlockColor, GameBlock, GameMatrix, GameState, GameUpdateReceiver, Master2RenderCommunique, Point, Renderer, UI2RenderCommunique, UiCommand};
+use crate::game::tootris::ControllerCommand;
+use terminal::Clear;
+use style::{SetAttribute, Attribute, Print};
+use cursor::MoveTo;
+use crate::settings::{XRENDER_OFFSET, UI_ANCHOR};
 
 pub struct TermRenderer {
     pub from_master: Option<GameUpdateReceiver<Master2RenderCommunique>>,
@@ -19,35 +24,42 @@ pub struct TermRenderer {
     pub term_size: Option<(u16, u16)>,
     pub state: Option<GameState>,
     pub render_offset: Option<Point>,
-    pub text: Option<(String, Point)>,
+    pub ui_vector: Option<Vec<GameBlock>>,
 }
 
 impl TermRenderer {
     pub fn full_refresh(&mut self) {
-        terminal::enable_raw_mode();
+        self.find_render_offset();
+        terminal::enable_raw_mode().expect("It's raw mode or nothing babe");
 
-        self.out.as_mut().unwrap().queue(terminal::Clear(ClearType::All));
-        self.out.as_mut().unwrap().queue(cursor::DisableBlinking);
-        self.out.as_mut().unwrap().queue(cursor::Hide);
-        self.draw_everything();
-        self.out.as_mut().unwrap().flush();
+        self.out.as_mut().unwrap().queue(Clear(ClearType::All)).expect("whatever");
+        self.out.as_mut().unwrap().queue(cursor::DisableBlinking).expect("whatever2");
+        self.out.as_mut().unwrap().queue(cursor::Hide).expect("whatever3");
+        self.draw_whole_level();
+        self.render_ui();
+        self.out.as_mut().unwrap().flush().expect("The toilet is clogged.");
         self.term_size = Some(terminal::size().unwrap());
     }
 
     fn find_render_offset(&mut self) {
-        if self.term_size.is_some() {
-            let (x, y) = self.term_size.unwrap();
-            //Since each point in the rendered matrix has an x width of 2
-            let offsetx = x as usize - self.current_matrix.as_ref().expect("no level!")[0].len();
-            self.render_offset = Some(Point {
-                x: offsetx,
-                y: 0,
-            });
+        self.render_offset = Some(Point {
+            x: XRENDER_OFFSET,
+            y: 0,
+        });
+    }
+
+    fn render_ui(&mut self) {
+        if self.ui_vector.is_none() {
+            return;
+        }
+        for i in 0..self.ui_vector.as_ref().unwrap().len() {
+            self.draw_single(self.ui_vector.as_ref().unwrap().get(i).unwrap().clone(),
+                             Point { x: UI_ANCHOR.x, y: UI_ANCHOR.y + i }, true);
         }
     }
 
     /// Returns true if thread should continue
-    pub fn check_maybe_render(&mut self) -> bool {
+    pub fn maybe_render(&mut self) -> bool {
         if self.out.is_none() || self.from_master.is_none() {
             return false;
         }
@@ -62,11 +74,15 @@ impl TermRenderer {
         }
 
         let should_draw = self.check_handle_master_updates();
+        if !self.check_handle_ui_updates() {
+            return false;
+        }
         if self.check_if_window_changed() {
             self.full_refresh();
         } else if should_draw {
             self.draw_updates();
-            self.out.as_mut().unwrap().flush();
+            self.out.as_mut().expect("no stdout?")
+                .flush().expect("forgot to flush.");
         }
         return true;
     }
@@ -84,6 +100,7 @@ impl TermRenderer {
         let receiver = self.from_master
             .as_mut()
             .unwrap().receiver.borrow_mut();
+
         let rec = receiver.try_recv();
         if rec.is_ok() {
             let com = rec.unwrap();
@@ -91,18 +108,31 @@ impl TermRenderer {
                 self.update_matrix(com.level.unwrap());
                 return true;
             }
+            if com.state.is_some() {
+                self.state = com.state;
+            }
+
+            if com.command.is_some() {
+                match com.command.unwrap() {
+                    ControllerCommand::FullRefresh => {
+                        self.full_refresh();
+                    }
+                }
+            }
         }
         return false;
     }
 
-    fn draw_everything(&mut self) {
+    fn draw_whole_level(&mut self) {
         if self.current_matrix.is_none() {
             return;
         }
         if self.out.is_none() {
             return;
         }
-        self.out.as_mut().unwrap().queue(style::SetAttribute(style::Attribute::Reset));
+        self.out.as_mut().unwrap().queue(SetAttribute(Attribute::Reset))
+            .expect("super whatever");
+
         self.draw_buffer = self.current_matrix.clone();
         self.draw_updates();
     }
@@ -112,36 +142,49 @@ impl TermRenderer {
             return;
         }
         if self.draw_buffer.is_some() {
-            self.out.as_mut().unwrap().queue(style::SetAttribute(style::Attribute::Reset));
+            self.out.as_mut().unwrap().queue(SetAttribute(Attribute::Reset))
+                .expect("NOOOOOOOOOOOOOOOOOOO!");
+
             for y in 0..self.draw_buffer.as_ref().unwrap().len() {
                 for x in 0..self.draw_buffer.as_ref().unwrap()[0].len() {
-                    self.draw_single(self.draw_buffer.as_ref().unwrap()[y][x].clone(), Point { x, y });
+                    self.draw_single(
+                        self.draw_buffer.as_ref().unwrap()[y][x].clone(), Point { x, y }, false);
                 }
             }
         }
     }
 
-    fn draw_single(&mut self, block: GameBlock, p: Point) {
+    fn draw_single(&mut self, block: GameBlock, p: Point, override_offset: bool) {
         if self.out.is_none() {
             return;
         }
-        let offset = self.render_offset.unwrap_or(Point {x:0,y:0});
+        let offset: Point;
+        if override_offset || self.render_offset.is_none() { offset = Point { x: 0, y: 0 }; } else { offset = self.render_offset.unwrap(); }
+
         let output = self.out.as_mut().unwrap();
-        output.queue(cursor::MoveTo((p.x * 2 + offset.x) as u16, (p.y +offset.y) as u16));
+        output.queue(MoveTo((p.x * 2 + offset.x) as u16, (p.y + offset.y) as u16))
+            .expect("dosh-dosh.");
 
         match block {
-            GameBlock::Filled(_) => {
+            GameBlock::Filled(color) => {
                 output.queue(style::PrintStyledContent(
                     "██".bold()
-                        .with(Self::map_color(block.get_color().unwrap()))));
+                        .with(Self::map_color(&color))))
+                    .expect("ton-ton?");
             }
             GameBlock::Empty => {
-                output.queue(style::Print(".."));
+                output.queue(Print("..")).expect("ton-ton.");
             }
             GameBlock::Indestructible => {
                 output.queue(style::PrintStyledContent(
                     "██".bold()
-                        .with(style::Color::Grey)));
+                        .with(style::Color::Grey))).expect("ton-ka-ton");
+            }
+            GameBlock::String(val, color) => {
+                output.queue(style::PrintStyledContent(
+                    val.bold()
+                        .with(Self::map_color(&color))))
+                    .expect("ton-ton?");
             }
             _ => {}
         }
@@ -155,7 +198,6 @@ impl TermRenderer {
             BlockColor::Green => { Color::Green }
             BlockColor::Cyan => { Color::Cyan }
             BlockColor::White => { Color::White }
-            BlockColor::Undefined => { Color::Black }
         }
     }
 
@@ -164,8 +206,8 @@ impl TermRenderer {
             return;
         }
 
-        let mut write = self.draw_buffer.as_mut().unwrap();
-        let mut current = self.current_matrix.as_mut().unwrap();
+        let write = self.draw_buffer.as_mut().unwrap();
+        let current = self.current_matrix.as_mut().unwrap();
         for y in 0..new_matrix.len() {
             for x in 0..new_matrix[0].len() {
                 if current[y][x] == new_matrix[y][x] {
@@ -178,15 +220,33 @@ impl TermRenderer {
         }
     }
 
-    /// returns true if a full update is needed
     fn check_handle_ui_updates(&mut self) -> bool {
-        return false;
+        if self.from_ui.is_some() {
+            let rec = self.from_ui.as_mut().unwrap().receiver.try_recv();
+            if rec.is_ok() {
+                let com = rec.unwrap();
+                if com.vector.is_some() {
+                    self.ui_vector = com.vector;
+                }
+                if com.command.is_some() {
+                    match com.command.unwrap() {
+                        UiCommand::Exit => {return false;}
+                        UiCommand::RenderOffset(_) => {}
+                        UiCommand::RefreshUi => {
+                            self.render_ui();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        return true;
     }
 }
 
 impl Renderer for TermRenderer {
     fn render(&mut self) -> bool {
-        return self.check_maybe_render();
+        return self.maybe_render();
     }
 
     fn give_master_receiver(&mut self, receiver: GameUpdateReceiver<Master2RenderCommunique>) {

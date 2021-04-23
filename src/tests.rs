@@ -7,12 +7,11 @@ mod tests {
 
     use crate::game::piece_types::*;
     use crate::game::piece::Piece;
-    use crate::ui::*;
-    use crate::settings::{PIECE_L, PIECE_SQUARE, PIECE_PODIUM, OPTION_TICK_BASE_MS, PIECE_Z, PIECE_S, PIECE_LINE, PIECE_J};
-    use std::borrow::Borrow;
+
+    use crate::settings::{PIECE_PODIUM, OPTION_TICK_BASE_MS, PIECE_Z, PIECE_S, PIECE_LINE, PIECE_J};
+
     use crate::game::game_loop_controller::EvilGameMaster;
     use std::sync::mpsc::channel;
-    use crate::ui::simple_command_ui::SimpleCommandUi;
 
     #[test]
     fn test_piece() {
@@ -50,11 +49,6 @@ mod tests {
 
     #[test]
     fn test_rotation_tootris_ending() {
-        let mut ui = SimpleCommandUi {
-            master_receiver: None,
-            master_broadcaster: None,
-            command_queue: Vec::new(),
-        };
 
         let pieces: PieceDefinitions = PieceDefinitions::new();
 
@@ -66,9 +60,7 @@ mod tests {
                                              None, None, None);
         let chan_master_render = channel();
         let chan_ui_master = channel();
-        ui.give_master_broadcaster(GameBroadcaster {
-            channel_out: chan_ui_master.0,
-        });
+
         master.give_ui_receiver(GameUpdateReceiver {
             receiver: chan_ui_master.1,
         });
@@ -84,8 +76,6 @@ mod tests {
         while master.active_piece.as_ref().unwrap().location.y < 10 {
             master.process_game();
             mock_renderer.print_any_update();
-            ui.handle_ui();
-            ui.submit_command("L");
         }
     }
 

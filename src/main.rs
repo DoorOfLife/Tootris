@@ -1,15 +1,14 @@
-use std::io::{stdout, Stdout, Write};
+use std::io::{stdout};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use crossterm::{
-    cursor, ExecutableCommand,
-    QueueableCommand, Result, style::{self, Colorize}, terminal,
+    Result,
 };
 
 use game::game_loop_controller::EvilGameMaster;
-use game::tootris::{GameBlock, GameState, GameBroadcaster, GameUpdateReceiver, Master2RenderCommunique, UI2MasterCommunique};
-use ui::crossterm_render;
-use ui::crossterm_ui;
+use game::tootris::{GameBroadcaster, GameUpdateReceiver,
+                    Master2RenderCommunique, UI2MasterCommunique};
+
 
 use crate::ui::crossterm_render::TermRenderer;
 use crate::game::tootris::{Renderer, Master2UICommunique, UI2RenderCommunique, UIHandler};
@@ -21,8 +20,29 @@ mod settings;
 mod ui;
 mod game;
 
+use std::env;
+
 fn main() -> Result<()> {
-    let gm_2_render: (Sender<Master2RenderCommunique>, Receiver<Master2RenderCommunique>) = channel();
+    let args: Vec<String> = env::args().collect();
+    let height: usize;
+    let width: usize;
+    match args.len() {
+        2 => {
+            height = 24;
+            width = args[1].parse().unwrap()
+        }
+        3 => {
+            height = args[2].parse().unwrap();
+            width = args[1].parse().unwrap();
+        }
+        _ => {
+            height = 24;
+            width = 10
+        }
+    }
+    let gm_2_render: (Sender<Master2RenderCommunique>,
+                      Receiver<Master2RenderCommunique>) = channel();
+
     let gm_to_render_receiver = GameUpdateReceiver {
         receiver: gm_2_render.1,
     };
@@ -57,17 +77,14 @@ fn main() -> Result<()> {
         receiver: ui_to_render.1,
     };
 
-    let mut ui = TermUI {
-        to_master: Some(ui_to_gm_sender),
-        to_render: Some(ui_to_render_sender),
-        from_master: Some(master_to_ui_receiver),
-        state: Some(GameState::Playing),
-        score: None,
-    };
+    let mut ui = TermUI::new(Some(ui_to_gm_sender),
+                             Some(ui_to_render_sender),
+                             Some(master_to_ui_receiver));
 
-    let mut master = EvilGameMaster::new(22, 10, None,
-                                         Some(gm_to_render_sender), Some(master_to_ui_sender)
-                                         , Some(ui_to_gm_receiver));
+    let mut master = EvilGameMaster::new(height, width, None,
+                                         Some(gm_to_render_sender),
+                                         Some(master_to_ui_sender),
+                                         Some(ui_to_gm_receiver));
 
     let mut my_renderer = TermRenderer {
         from_master: Some(gm_to_render_receiver),
@@ -78,18 +95,28 @@ fn main() -> Result<()> {
         term_size: None,
         state: None,
         render_offset: None,
-        text: None,
+        ui_vector: None,
     };
     master.new_game();
     master.resume_game();
     my_renderer.full_refresh();
+    use std::thread;
+
+    let handler = thread::spawn(move || {
+        let mut run = true;
+        while run {
+            run = ui.handle_ui();
+        }
+    });
+    
+
     let mut run = true;
     while run {
+        if !run {break;}
         run = master.process_game();
-        if !run { break; }
+        if !run {break;}
         run = my_renderer.render();
-        if !run { break; }
-        run = ui.handle_ui();
     }
+    handler.join();
     Ok(())
 }

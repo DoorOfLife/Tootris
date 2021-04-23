@@ -1,37 +1,28 @@
 extern crate stopwatch;
 
-use std::any::Any;
-use std::borrow::Borrow;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-
 use rand::{Rng, thread_rng};
 use stopwatch::Stopwatch;
 
 use crate::game::piece::{Piece};
-use crate::game::piece_types::{PieceDefinition, PieceDefinitions,
-                               PieceFreezeProperty, PODIUM, SQUARE};
+use crate::game::piece_types::{PieceDefinition, PieceDefinitions, PieceFreezeProperty};
 
-use crate::game::tootris::{BlockColor, Communique, Controller, GameBlock, GameBroadcaster,
-                           GameMatrix, GameState, GameUpdateReceiver, Master2RenderCommunique,
-                           Master2UICommunique, PlayerMove, Point, Rotation, UI2MasterCommunique,
-                           UiCommand};
+use crate::game::tootris::{BlockColor, Communique, Controller, GameBlock, GameBroadcaster, GameMatrix, GameState, GameUpdateReceiver, Master2RenderCommunique, Master2UICommunique, PlayerMove, Point, Rotation, UI2MasterCommunique, UiCommand, ControllerCommand};
 use crate::game::tootris::Communique::Update;
 use crate::settings::*;
-use crate::game::tootris::GameState::Tootris;
-use crossterm::tty::IsTty;
+use crate::game::tootris::GameState::{Tootris, Exit};
+use std::ops::Mul;
 
 pub struct EvilGameMaster {
     pub level: GameMatrix,
+    pub gom: Option<GameMatrix>,
     pub completed_rows: Vec<usize>,
     pub active_piece: Option<Piece>,
     speed: usize,
     pub score: usize,
-    num_pieces: usize,
+    pub num_pieces: usize,
     piece_map: PieceDefinitions,
     piece_bucket: Vec<Piece>,
     pub sw: Stopwatch,
-    slide_sw: Stopwatch,
     pub state: GameState,
     pub render_slave: Option<GameBroadcaster<Master2RenderCommunique>>,
     pub ui_slave: Option<GameBroadcaster<Master2UICommunique>>,
@@ -88,11 +79,11 @@ impl EvilGameMaster {
             piece_map: PieceDefinitions::new(),
             piece_bucket: Vec::with_capacity(OPTION_BUCKET_MAX_SIZE),
             sw: Stopwatch::new(),
-            slide_sw: Stopwatch::new(),
             state: GameState::Start,
             render_slave,
             ui_slave,
             ui_listener,
+            gom: None,
         };
         s.create_level_boundaries();
         return s;
@@ -155,6 +146,7 @@ impl EvilGameMaster {
                 if self.active_piece.is_none() {
                     if !self.next_piece() {
                         self.state = GameState::End;
+                        self.active_piece = None;
                         return should_continue;
                     }
                 }
@@ -175,38 +167,36 @@ impl EvilGameMaster {
                 if self.process_input_commands() {
                     should_update_render = true;
                 }
-                //if new movement:
-                //should_update_render = true;
             }
             GameState::Tootris => {
                 if self.next_tick() {
-                    println!("1");
                     self.send_state_to_ui();
                     self.score += (self.completed_rows.len() * self.level[0].len())
-                        .pow(self.completed_rows.len() as u32);
+                        .mul(self.completed_rows.len());
 
                     let mut new_matrix: GameMatrix = Vec::with_capacity(self.level.len());
+                    if self.speed < 99 - self.completed_rows.len() {
+                        self.speed+= self.completed_rows.len();
+                    } else {
+                        self.speed = 99;
+                    }
 
                     //in new matrix, create new empty rows at the top
                     for _new_row in 0..self.completed_rows.len() {
                         new_matrix.push(Self::create_empty_row(self.level[0].len()))
                     }
-                    println!("2");
-                    //in old matrix, remove the completed rows
-                    for remove_row in self.completed_rows.to_owned() {
-                        self.level.remove(remove_row);
-                    }
-
                     //in new matrix, add the remaining rows from the old
-                    for remaning_row in self.level.to_owned() {
-                        new_matrix.push(remaning_row);
+                    for i in 0..self.level.to_owned().len() {
+                        if self.completed_rows.contains(&i) {
+                            continue;
+                        }
+                        new_matrix.push(self.level[i].to_owned());
                     }
                     self.level = new_matrix;
                     self.completed_rows = Vec::new();
                     self.state = GameState::Playing;
                     should_update_render = true;
                     self.send_state_to_ui();
-                    println!("3");
                 }
             }
 
@@ -214,6 +204,19 @@ impl EvilGameMaster {
                 self.process_input_commands();
             }
             GameState::End => {
+                if !self.sw.is_running() {
+                    self.sw.start();
+                }
+                if self.next_tick() {
+                    if self.active_piece.is_none() {
+                        self.active_piece = Some(Piece
+                        ::new(PieceDefinitions::new().get_piece_def(
+                            GAME_OVER_PIECE.as_ref()).def.to_owned(),
+                              PieceFreezeProperty::Normal,
+                              BlockColor::Magenta, Point { x: 5, y: self.level.len() - 1 }));
+                    }
+                    self.send_render_update(Some(ControllerCommand::FullRefresh));
+                }
                 self.process_input_commands();
             }
             GameState::Start => {
@@ -224,11 +227,10 @@ impl EvilGameMaster {
             }
         }
         if should_update_render {
-            self.send_render_update();
+            self.send_render_update(None);
         }
         return should_continue;
     }
-
 
     fn process_input_commands(&mut self) -> bool {
         if self.ui_listener.is_some() {
@@ -248,7 +250,8 @@ impl EvilGameMaster {
                         self.resume_game();
                     }
                     UiCommand::Exit => {
-                        self.exit();
+                        self.state = Exit;
+                        self.send_render_update(None);
                     }
                     _ => {}
                 }
@@ -259,24 +262,6 @@ impl EvilGameMaster {
                 return self.process_move(command.as_ref().unwrap().player_move.as_ref().unwrap());
             }
             return false;
-        }
-        return false;
-    }
-
-    fn fall_if_time(&mut self) -> bool {
-        if self.slide_sw.elapsed_ms() >= OPTION_FALL_INTERVAL_MS {
-            self.vertical_move(1);
-            self.slide_sw.restart();
-            return true;
-        }
-        return false;
-    }
-
-    fn slide_if_time(&mut self, reverse: bool) -> bool {
-        if self.slide_sw.elapsed_ms() >= OPTION_SLIDE_INTERVAL_MS {
-            self.horizontal_move(1, reverse);
-            self.slide_sw.restart();
-            return true;
         }
         return false;
     }
@@ -438,10 +423,6 @@ impl EvilGameMaster {
             PlayerMove::StepLeft => self.horizontal_move(1, true),
             PlayerMove::StepRight => self.horizontal_move(1, false),
             PlayerMove::StepDown => self.vertical_move(1),
-            PlayerMove::OrientDown => self.rotate_active_piece(&Rotation::OrientDown),
-            PlayerMove::OrientUp => self.rotate_active_piece(&Rotation::OrientUp),
-            PlayerMove::OrientLeft => self.rotate_active_piece(&Rotation::OrientLeft),
-            PlayerMove::OrientRight => self.rotate_active_piece(&Rotation::OrientRight),
             _ => false,
         }
     }
@@ -512,7 +493,7 @@ impl EvilGameMaster {
         return false;
     }
 
-    fn send_render_update(&mut self) -> bool {
+    fn send_render_update(&mut self, command: Option<ControllerCommand>) -> bool {
         if self.render_slave.is_some() {
             let mut level_update = self.level.clone();
             if self.active_piece.is_some() {
@@ -524,6 +505,7 @@ impl EvilGameMaster {
                 level: Some(level_update),
                 state: Some(self.state.clone()),
                 score: Some(self.score),
+                command,
             }).is_err();
         }
         return false;

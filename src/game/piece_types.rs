@@ -1,7 +1,9 @@
 use crate::game::piece_types::DefinitionBlock::*;
 use std::collections::HashMap;
-use crate::settings::{PIECE_LINE, PIECE_SQUARE, PIECE_PODIUM, PIECE_L, PIECE_J, PIECE_S, PIECE_Z};
-use crate::game::piece::Piece;
+use crate::settings::{PIECE_LINE, PIECE_SQUARE, PIECE_PODIUM, PIECE_L, PIECE_J, PIECE_S,
+                      PIECE_Z, GAME_OVER_PIECE, GAME_OVER_TEXT_1, GAME_OVER_TEXT_2, GAME_OVER_TEXT_3,
+                      GAME_OVER_TEXT_4, GAME_OVER_TEXT_5, GAME_OVER_TEXT_6, GAME_OVER_TEXT_7};
+
 use std::borrow::Borrow;
 
 #[macro_export]
@@ -37,6 +39,7 @@ pub enum DefinitionBlock {
     Origin,
     Filled,
     Blank,
+    Text(&'static str),
 }
 
 impl Clone for DefinitionBlock {
@@ -45,24 +48,18 @@ impl Clone for DefinitionBlock {
             Origin => Origin,
             Filled => Filled,
             Blank => Blank,
+            Text(val) => Text(val),
         }
     }
 }
 
 impl DefinitionBlock {
-    pub fn is_any(&self, of: &[Self]) -> bool {
-        for that in of {
-            if that.eq(self) {
-                return true;
-            }
-        }
-        return false;
-    }
     pub const fn get_string_visual(&self) -> char {
         match self {
             Origin => '#',
             Filled => '#',
             Blank => ' ',
+            _ => ' ',
         }
     }
 }
@@ -105,6 +102,7 @@ impl PieceDefinitions {
         map.insert(PIECE_J, PieceDefinition::new(double_vec!(JPIECE), PieceFreezeProperty::Normal));
         map.insert(PIECE_S, PieceDefinition::new(double_vec!(SPIECE), PieceFreezeProperty::Normal));
         map.insert(PIECE_Z, PieceDefinition::new(double_vec!(ZPIECE), PieceFreezeProperty::Normal));
+        map.insert(GAME_OVER_PIECE, PieceDefinition::new(double_vec!(GAME_OVER), PieceFreezeProperty::Normal));
 
         return map;
     }
@@ -154,4 +152,15 @@ pub static JPIECE: [[DefinitionBlock; 2]; 3] =
         [Blank, Filled],
         [Blank, Origin],
         [Filled, Filled]
+    ];
+pub static GAME_OVER: [[DefinitionBlock; 1]; 8] =
+    [
+        [Text(GAME_OVER_TEXT_1)],
+        [Text(GAME_OVER_TEXT_2)],
+        [Text(GAME_OVER_TEXT_3)],
+        [Text(GAME_OVER_TEXT_4)],
+        [Text(GAME_OVER_TEXT_5)],
+        [Text(GAME_OVER_TEXT_6)],
+        [Text(GAME_OVER_TEXT_7)],
+        [Origin],
     ];
